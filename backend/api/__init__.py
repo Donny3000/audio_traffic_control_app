@@ -1,4 +1,5 @@
 import os
+import time
 from flask import Flask
 
 
@@ -26,5 +27,14 @@ def create_app(test_config=None):
     @app.route('/hello')
     def hello():
         return "Hello, World!"
+    
+    @app.route('/time')
+    def get_current_time():
+        return {'time': time.time()}
+
+    from . import db
+    from . import auth
+    db.init_app(app)
+    app.register_blueprint(auth.bp)
     
     return app
