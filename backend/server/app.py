@@ -6,7 +6,10 @@ from configparser import ConfigParser
 from flask import Flask, request
 from flask_socketio import SocketIO
 
-config = ConfigParser('../config.ini')
+config = ConfigParser()
+with open('../config.ini') as f:
+    config.read_file(f)
+
 app = Flask(__name__, instance_relative_config=True)
 app.config.from_mapping(
     SECRET_KEY='dev',
@@ -60,5 +63,5 @@ def handle_audio_message(message):
 
 
 if __name__ == "__main__":
-    print(f"[INFO] Starting Audio Traffic Control Server at http://{config['server']['host']}:{config['server']['port']}")
-    socketio.run(app=app, host=config['server']['host'], port=config['server']['port'])
+    print(f"[INFO] Starting Audio Traffic Control Server at http://{config['Server']['Host']}:{config['Server']['Port']}")
+    socketio.run(app=app, host=config['Server']['Host'], port=config['Server']['Port'])

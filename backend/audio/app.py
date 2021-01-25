@@ -13,7 +13,9 @@ import socketio
 """
 """
 
-config = ConfigParser('../config.ini')
+config = ConfigParser()
+with open('../config.ini') as f:
+    config.read_file(f)
 sio = socketio.Client()
 
 
@@ -34,20 +36,17 @@ def disconnect():
 
 class MicrophoneReader(object):
     def __init__(self):
-        self._buffer      = deque(maxlen=config['Audio']['BufferSize'])
+        self._buffer      = deque(maxlen=config.getint('Audio', 'BufferSize', fallback=1024))
         self._p           = pa.PyAudio()
         mic               = self._p.get_default_input_device_info()
-        if config['Audio']['SampleRate'] is None:
-            self._sample_rate = int(mic['defaultSampleRate'])
-        else:
-            self._sample_rate = config['Audio']['SampleRate']
-        self._chunk_size  = config['Audio']['WindowSize']
+        self._sample_rate = config.getfloat('Audio', 'SampleRate', fallback=int(mic['defaultSampleRate']))
+        self._chunk_size  = config.getint('Audio', 'WindowSize', fallback=2048)
         self._in_stream   = self._p.open(
             format=pa.paInt16,
             channels=mic['maxInputChannels'],
             rate=self._sample_rate,
             input=True,
-            frames_per_buffer=config['Audio']['WindowSize'],
+            frames_per_buffer=self._chunk_size,
             stream_callback=self.callback
         )
 
