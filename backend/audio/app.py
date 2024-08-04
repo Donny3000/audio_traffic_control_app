@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from threading import Thread, Event
 from configparser import ConfigParser
 from collections import deque
+from contextlib import contextmanager
 from matplotlib.animation import FuncAnimation
 import socketio
 
@@ -148,8 +149,6 @@ def main():
 
     except KeyboardInterrupt:
         pass
-    finally:
-        audio_client.close()
 
 
 if __name__ == "__main__":
