@@ -103,7 +103,6 @@ class MicrophoneStreamer(object):
                     
                 break  # Exit retry loop if the stream was successfully opened
 
-                print("[INFO] Recording stopped")
             except Exception as e:
                 attempt += 1
                 self._logger.error(f"Failed to start audio stream on attempt {attempt}: {e}")
