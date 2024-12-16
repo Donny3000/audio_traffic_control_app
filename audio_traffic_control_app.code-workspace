@@ -4,5 +4,72 @@
 			"path": "."
 		}
 	],
-	"settings": {}
+	"settings": {
+		"python.pythonPath": "/Users/drpoole/anaconda3/envs/webdev/bin/python"
+	},
+	"launch": {
+		"version": "0.2.0",
+		"configurations": [
+			{
+				"name": "Frontend: Web",
+				"request": "launch",
+				"program": "frontend/lib/main.dart",
+				"type": "dart",
+				"args": [
+					"-d",
+					"chrome"
+				]
+			},
+			{
+				"name": "Frontend: Mobile",
+				"request": "launch",
+				"type": "dart",
+				"program": "frontend/lib/main.dart",
+				"args": []
+			},
+			{
+				"name": "Frontend: Desktop",
+				"request": "launch",
+				"type": "dart",
+				"program": "frontend/lib/main.dart",
+				"args": [
+					"-d",
+					"windows"
+				]
+			},
+			{
+				"name": "Frontend: macOS",
+				"request": "launch",
+				"type": "dart",
+				"program": "frontend/lib/main.dart",
+				"args": [
+					"-d",
+					"macos"
+				]
+			},
+			{
+				"name": "Frontend (profile mode)",
+				"request": "launch",
+				"program": "frontend/lib/main.dart",
+				"type": "dart",
+				"flutterMode": "profile"
+			},
+			{
+				"name": "Frontend (release mode)",
+				"request": "launch",
+				"program": "frontend/lib/main.dart",
+				"type": "dart",
+				"flutterMode": "release"
+			},
+			{
+				"name": "Python Debugger: Current File with Arguments",
+				"type": "debugpy",
+				"request": "launch",
+				"program": "app.py",
+				"console": "integratedTerminal",
+				"cwd": "${workspaceFolder}/backend/audio"
+			}
+		],
+		"compounds": []
+	}
 }

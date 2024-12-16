@@ -3,16 +3,10 @@
 import time
 import numpy as np
 import pyaudio as pa
-import matplotlib.pyplot as plt
-from threading import Thread, Event
 from configparser import ConfigParser
 from collections import deque
-from contextlib import contextmanager
-from matplotlib.animation import FuncAnimation
 import socketio
 
-"""
-"""
 
 config = ConfigParser()
 with open('../config.ini') as f:
@@ -26,8 +20,8 @@ def connect():
 
 
 @sio.event
-def connect_error():
-    print('[INFO] Failed to connect to server.')
+def connect_error(data):
+    print(f'[INFO] Failed to connect to server: {data}')
 
 
 @sio.event
@@ -40,27 +34,34 @@ class MicrophoneReader(object):
         self._buffer      = deque(maxlen=config.getint('Audio', 'BufferSize', fallback=1024))
         self._p           = pa.PyAudio()
         mic               = self._p.get_default_input_device_info()
-        self._sample_rate = config.getfloat('Audio', 'SampleRate', fallback=int(mic['defaultSampleRate']))
+        self._sample_rate = config.getint('Audio', 'SampleRate', fallback=int(mic['defaultSampleRate']))
         self._chunk_size  = config.getint('Audio', 'WindowSize', fallback=2048)
         self._in_stream   = self._p.open(
             format=pa.paInt16,
             channels=mic['maxInputChannels'],
             rate=self._sample_rate,
             input=True,
+            input_device_index=mic['index'],
             frames_per_buffer=self._chunk_size,
             stream_callback=self.callback
         )
 
     def __del__(self):
+        if not self._in_stream.is_stopped():
+            self.stop_stream()
+        
         self._in_stream.close()
         self._p.terminate()
     
     def __enter__(self):
-        self.start_stream()
+        if self._in_stream.is_stopped():
+            self.start_stream()
+        return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.stop_stream()
-    
+        if not self._in_stream.is_stopped():
+            self.stop_stream()
+
     @property
     def sample_rate(self):
         return self._sample_rate
@@ -74,14 +75,14 @@ class MicrophoneReader(object):
         return data, pa.paContinue
     
     def start_stream(self):
-        if not self._in_stream._is_running:
+        if self._in_stream.is_stopped():
             print("[INFO] Recording started")
             self._in_stream.start_stream()
         else:
             print("[INFO] Recording already in progress")
 
     def stop_stream(self):
-        if self._in_stream._is_running:
+        if not self._in_stream.is_stopped():
             print("[INFO] Recording stopped")
             self._in_stream.stop_stream()
         else:
@@ -96,27 +97,24 @@ class MicrophoneReader(object):
 
 class AudioDataClient(object):
     def __init__(self):
-        self._sample_rate      = config['Audio']['SampleRate']
-        self._avg_buffer       = deque(maxlen=config['Audio']['FilterSize'])
+        self._sample_rate      = config.getint('Audio', 'SampleRate')
+        self._avg_buffer       = deque(maxlen=config.getint('Audio', 'FilterSize'))
         self._last_update_time = time.time()
-        self._stream_fps       = config['Audio']['StreamFps']
-        self._stream_period    = 1 / config['Audio']['StreamFps']
+        self._stream_fps       = config.getfloat('Audio', 'StreamFps')
+        self._stream_period    = 1 / self._stream_fps
     
     def setup(self):
         server_url = f"http://{config['Audio']['ServerAddr']}:{config['Audio']['ServerPort']}"
         print(f"[INFO] Connecting to server {server_url}")
         sio.connect(
-            f"{server_url}",
+            server_url,
             transports=['websocket'],
-            namespaces=config['Namespaces']['Audio']
+            namespaces=[config['Namespaces']['Audio']]
         )
-        time.sleep(1)
 
-        return self
-    
     def process_raw_audio(self, samples: np.ndarray):
         curr_time = time.time()
-        if (curr_time - self._last_update_time) > self._stream_period and samples is not None:
+        if ((curr_time - self._last_update_time) > self._stream_period) and (samples is not None):
             self._last_update_time = curr_time
 
             win_size      = samples.shape[-1]
@@ -134,18 +132,19 @@ class AudioDataClient(object):
                     'samples': samples / 32768.0
                 }
             )
-            #print(f"Max Freq: {freqs[mags.argmax()]} @ {mags.max()} dB")
+            print(f"Max Freq: {freqs[mags.argmax()]} @ {mags.max()} dB")
     
     def close(self):
         sio.disconnect()
 
 
-
 def main():
     try:
         audio_client = AudioDataClient()
-        with MicrophoneReader as ain:
-            audio_client.process_raw_audio(ain.get_data())
+        audio_client.setup()
+        with MicrophoneReader() as ain:
+            while True:
+                audio_client.process_raw_audio(ain.get_data())
 
     except KeyboardInterrupt:
         pass

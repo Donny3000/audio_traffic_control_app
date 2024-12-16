@@ -1,0 +1,6 @@
+{
+  "appTitle": "sound_meter",
+  "@appTitle": {
+    "description": "The title of the application"
+  }
+}
