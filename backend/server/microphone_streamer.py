@@ -7,7 +7,8 @@ import pyaudio as pa
 from pathlib        import Path
 from configparser   import ConfigParser
 from collections    import deque
-from flask_socketio import SocketIO, emit
+from flask_socketio import SocketIO
+
 
 class MicrophoneStreamer(object):
     def __init__(self, sio: SocketIO, config_file: Path, retries: int=3, retry_delay: int=2):
@@ -48,7 +49,8 @@ class MicrophoneStreamer(object):
     
     def process_audio(self, samples: np.ndarray):
         curr_time = time.time()
-        if (((curr_time - self._last_update_time) > self._stream_period) and
+        time_delta = curr_time - self._last_update_time
+        if ((time_delta > self._stream_period) and
             (samples is not None)):
             self._last_update_time = curr_time
             win_size               = samples.shape[-1]
@@ -59,7 +61,7 @@ class MicrophoneStreamer(object):
             freqs                  = self.sample_rate * np.fft.fftfreq(win_size)[1:real_win_size]
 
             # Emit audio data to the frontend
-            samples_out = np.uint8(samples / 32768.0)
+            #samples_out = np.uint8(samples / 32768.0)
             self._sio.emit(
                 self._config['Channels']['Samples'],
                 {
@@ -88,6 +90,8 @@ class MicrophoneStreamer(object):
                 self._logger.info(f"Audio stream started successfully on attempt {attempt + 1}.")
                 self._logger.info(f"Sample Rate: {self.sample_rate} | Buffer Size: {self.window_size}")
                 self._logger.info(f"Stream FPS: {self._stream_fps} fps | Stream Period: {self._stream_period:03f}")
+
+                self._throttle_cnt = 0
 
                 while self._streaming:
                     try:

@@ -1,14 +1,16 @@
 import 'dart:async';
-import 'dart:collection';
-import 'dart:convert';
+//import 'dart:collection';
+//import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:io' as io;                               // To detect platform
+import 'package:flutter/foundation.dart' show kIsWeb; // To detect web platform
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'package:socket_io_client/socket_io_client.dart' as io;
-import 'package:audioplayers/audioplayers.dart';
+//import 'package:audioplayers/audioplayers.dart';
 //import 'package:audioplayers/audio_cache.dart';
 
 //import 'sample_feature/sample_item_details_view.dart';
@@ -16,6 +18,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'settings/settings_controller.dart';
 import 'resources/texts.dart';
 //import 'settings/settings_view.dart';
+import 'package:logger/logger.dart';
 
 /// The Widget that configures your application.
 class MyApp extends StatelessWidget {
@@ -91,6 +94,9 @@ class _AudioStreamPageState extends State<AudioStreamPage> {
   Timer? playbackTimer;
   List<double> amplitudes = [];
   final int maxAmplitudes = 100;
+  final Logger logger     = Logger(
+    printer: PrettyPrinter(methodCount: 0),
+  );
 
   // Configurable parameters
   int sampleRate = 44100; // Default sample rate
@@ -114,9 +120,12 @@ class _AudioStreamPageState extends State<AudioStreamPage> {
   }
 
   void _connectToSocket() {
+    // Determine WebSocket URL based on platform
+    final String serverUrl = _getServerUrl();
+
     // Connect to the Flask-SocketIO server
     socket = io.io(
-      'http://localhost:5001',
+      serverUrl,
       io.OptionBuilder()
           .setTransports(['websocket']) // Use WebSocket transport
           .disableAutoConnect() // Prevent auto-connection
@@ -125,7 +134,7 @@ class _AudioStreamPageState extends State<AudioStreamPage> {
 
     // Set up socket listeners
     socket.onConnect((_) {
-      print('Connected to server');
+      logger.i('Connected to server');
     });
 
     socket.on('audio_stream', (data) {
@@ -142,14 +151,33 @@ class _AudioStreamPageState extends State<AudioStreamPage> {
     });
 
     socket.on('audio_error', (data) {
-      print('Audio error: $data');
+      logger.e('Audio error: $data');
     });
 
     socket.onDisconnect((_) {
-      print('Disconnected from server');
+      logger.i('Disconnected from server');
     });
 
     socket.connect();
+  }
+
+  String _getServerUrl() {
+    const String baseUrl = 'ws://black-mamba.lan:5001';
+
+    if (kIsWeb) {
+      // Web-specific URL (no change needed)
+      return baseUrl;
+    } else if (io.Platform.isAndroid || io.Platform.isIOS) {
+      // Mobile platforms: Ensure the IP address is reachable from the device
+      return baseUrl;
+    } else if (io.Platform.isWindows ||
+        io.Platform.isLinux ||
+        io.Platform.isMacOS) {
+      // Desktop platforms: Adjust settings if needed
+      return baseUrl;
+    } else {
+      throw UnsupportedError('Unsupported platform');
+    }
   }
 
   // void _addToBuffer(Uint16List data) {
