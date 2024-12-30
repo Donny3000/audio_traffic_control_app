@@ -50,7 +50,7 @@ class MicrophoneStreamer(object):
     def process_audio(self, samples: np.ndarray):
         curr_time = time.time()
         time_delta = curr_time - self._last_update_time
-        if ((time_delta > self._stream_period) and
+        if ((time_delta >= self._stream_period) and
             (samples is not None)):
             self._last_update_time = curr_time
             win_size               = samples.shape[-1]

@@ -1,292 +1,305 @@
+import 'dart:async';
+import 'dart:math';
+import 'dart:io' as dio;
+import 'dart:typed_data';
+
 import 'package:fl_chart/fl_chart.dart';
 import 'package:sound_meter/src/resources/resources.dart';
+//import 'dart:io' as io; // To detect platform
+import 'package:flutter/foundation.dart' show kIsWeb; // To detect web platform
 import 'package:flutter/material.dart';
+import 'package:logger/logger.dart';
 
-class AudioSample extends StatefulWidget {
-  const AudioSample({super.key});
+import 'package:socket_io_client/socket_io_client.dart' as io;
+
+class AudioSpectrum extends StatefulWidget {
+  const AudioSpectrum({super.key});
+
+  final Color sinColor = SMColors.contentColorBlue;
+  final Color cosColor = SMColors.contentColorPink;
 
   @override
-  State<AudioSample> createState() => _AudioSampleState();
+  State<AudioSpectrum> createState() => _AudioSpectrumState();
 }
 
-class _AudioSampleState extends State<AudioSample> {
-  List<Color> gradientColors = [
-    SMColors.contentColorCyan,
-    SMColors.contentColorBlue,
-  ];
+class _AudioSpectrumState extends State<AudioSpectrum> {
+  final limitCount            = 100;
+  final sinPoints             = <FlSpot>[];
+  final cosPoints             = <FlSpot>[];
+  final amplitudes            = <FlSpot>[];
+  final int maxAmplitudes     = 100;
+  final List<int> sampleRates = [8000, 16000, 32000, 44100, 48000];
+  final logger                = Logger(
+    printer: PrettyPrinter(methodCount: 0),
+  );
 
-  bool showAvg = false;
+  // Configurable parameters
+  int sampleRate = 44100; // Default sample rate
+  int bufferSize = 1024; // Default buffer size
+
+  double xValue = 0;
+  double step = 0.05;
+
+  late io.Socket socket;
+  //late Timer timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _connectToSocket();
+    // timer = Timer.periodic(const Duration(milliseconds: 40), (timer) {
+    //   while (sinPoints.length > limitCount) {
+    //     sinPoints.removeAt(0);
+    //     cosPoints.removeAt(0);
+    //   }
+    //   setState(() {
+    //     amplitudes.add(FlSpot(xValue, sin(xValue)));
+    //     //sinPoints.add(FlSpot(xValue, cos(xValue)));
+    //     //cosPoints.add(FlSpot(xValue, cos(xValue)));
+    //   });
+    //   xValue += step;
+    // });
+  }
+
+  void _connectToSocket() {
+    // Determine WebSocket URL based on platform
+    final String serverUrl = _getServerUrl();
+
+    // Connect to the Flask-SocketIO server
+    socket = io.io(
+      serverUrl,
+      io.OptionBuilder()
+          .setTransports(['websocket']) // Use WebSocket transport
+          .disableAutoConnect() // Prevent auto-connection
+          .build(),
+    );
+
+    // Set up socket listeners
+    socket.onConnect((_) {
+      logger.i('Connected to server');
+    });
+
+    socket.on('audio_stream', (data) {
+      // Handle incoming audio data
+      _updateWaveform(Int16List.fromList(List<int>.from(data['samples'])));
+    });
+
+    socket.on('audio_error', (data) {
+      logger.e('Audio error: $data');
+    });
+
+    socket.onDisconnect((_) {
+      logger.i('Disconnected from server');
+    });
+
+    socket.connect();
+  }
+
+  String _getServerUrl() {
+    const String baseUrl = 'ws://black-mamba.lan:5001';
+
+    if (kIsWeb) {
+      // Web-specific URL (no change needed)
+      return baseUrl;
+    } else if (dio.Platform.isAndroid || dio.Platform.isIOS) {
+      // Mobile platforms: Ensure the IP address is reachable from the device
+      return baseUrl;
+    } else if (dio.Platform.isWindows ||
+        dio.Platform.isLinux ||
+        dio.Platform.isMacOS) {
+      // Desktop platforms: Adjust settings if needed
+      return baseUrl;
+    } else {
+      throw UnsupportedError('Unsupported platform');
+    }
+  }
+  void _updateWaveform(Int16List data) {
+    // Extract amplitude from raw audio data for waveform visualization
+    final int16List = Int16List.view(data.buffer); // Assuming 16-bit PCM format
+    // final double maxAmplitude =
+    //     int16List.map((v) => v.abs()).reduce(max).toDouble();
+    
+    setState(() {
+      xValue = 0;
+      for (var sample in int16List) {
+        amplitudes.add(FlSpot(xValue, sample.toDouble()));
+      }
+    });
+
+    // setState(() {
+    //   amplitudes.add(maxAmplitude);
+    //   if (amplitudes.length > maxAmplitudes) {
+    //     amplitudes.removeAt(0); // Keep the amplitude list size manageable
+    //   }
+    // });
+  }
+
+  void _startAudioStream() {
+    // Send user-selected parameters to the server
+    socket.emit(
+        'start_audio', {'sample_rate': sampleRate, 'buffer_size': bufferSize});
+  }
+
+  void _stopAudioStream() {
+    socket.emit('stop_audio');
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: <Widget>[
-        AspectRatio(
-          aspectRatio: 1.70,
-          child: Padding(
-            padding: const EdgeInsets.only(
-              right: 18,
-              left: 12,
-              top: 24,
-              bottom: 12,
-            ),
-            child: LineChart(
-              showAvg ? avgData() : mainData(),
-            ),
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const SizedBox(height: 12),
+        ////////////////////////////////
+        // Configurable parameters UI //
+        ////////////////////////////////
+        Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Sample Rate:'),
+                  DropdownButton<int>(
+                    value: sampleRate,
+                    items: sampleRates
+                        .map((rate) => DropdownMenuItem(
+                              value: rate,
+                              child: Text('$rate Hz'),
+                            ))
+                        .toList(),
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() {
+                          sampleRate = value;
+                        });
+                      }
+                    },
+                  ),
+                ],
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Buffer Size:'),
+                  Slider(
+                    value: bufferSize.toDouble(),
+                    min: 256,
+                    max: 2048,
+                    divisions: 7,
+                    label: '$bufferSize',
+                    onChanged: (value) {
+                      setState(() {
+                        bufferSize = value.toInt();
+                      });
+                    },
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
-        SizedBox(
-          width: 60,
-          height: 34,
-          child: TextButton(
-            onPressed: () {
-              setState(() {
-                showAvg = !showAvg;
-              });
-            },
-            child: Text(
-              'avg',
-              style: TextStyle(
-                fontSize: 12,
-                color: showAvg ? Colors.white.withOpacity(0.5) : Colors.white,
+        ////////////////////////
+        // Start/Stop buttons //
+        ////////////////////////
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            ElevatedButton(
+              onPressed: _startAudioStream,
+              child: const Text('Start Audio Stream'),
+            ),
+            ElevatedButton(
+              onPressed: _stopAudioStream,
+              child: const Text('Stop Audio Stream'),
+            ),
+          ],
+        ),
+        /////////////////////////////
+        // Setup the Flutter graph //
+        /////////////////////////////
+        amplitudes.isNotEmpty ? AspectRatio(
+          aspectRatio: 1.5,
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 24.0),
+            child: LineChart(
+              LineChartData(
+                minY: -1,
+                maxY: 1,
+                minX: amplitudes.first.x,
+                maxX: amplitudes.last.x,
+                lineTouchData: const LineTouchData(enabled: false),
+                clipData: const FlClipData.all(),
+                gridData: const FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                ),
+                borderData: FlBorderData(show: false),
+                lineBarsData: [
+                  ampLine(amplitudes)
+                  // sinLine(sinPoints),
+                  // cosLine(cosPoints),
+                ],
+                titlesData: const FlTitlesData(
+                  show: false,
+                ),
               ),
             ),
           ),
-        ),
+        ) : Container(),
       ],
     );
   }
 
-  Widget bottomTitleWidgets(double value, TitleMeta meta) {
-    const style = TextStyle(
-      fontWeight: FontWeight.bold,
-      fontSize: 16,
-    );
-    Widget text;
-    switch (value.toInt()) {
-      case 2:
-        text = const Text('MAR', style: style);
-        break;
-      case 5:
-        text = const Text('JUN', style: style);
-        break;
-      case 8:
-        text = const Text('SEP', style: style);
-        break;
-      default:
-        text = const Text('', style: style);
-        break;
-    }
-
-    return SideTitleWidget(
-      axisSide: meta.axisSide,
-      child: text,
+  LineChartBarData ampLine(List<FlSpot> points) {
+    return LineChartBarData(
+      spots: points,
+      dotData: const FlDotData(
+        show: false,
+      ),
+      gradient: LinearGradient(
+        colors: [widget.cosColor.withValues(alpha: 0), widget.cosColor],
+        stops: const [0.1, 1.0],
+      ),
+      barWidth: 4,
+      isCurved: false,
     );
   }
 
-  Widget leftTitleWidgets(double value, TitleMeta meta) {
-    const style = TextStyle(
-      fontWeight: FontWeight.bold,
-      fontSize: 15,
-    );
-    String text;
-    switch (value.toInt()) {
-      case 1:
-        text = '10K';
-        break;
-      case 3:
-        text = '30k';
-        break;
-      case 5:
-        text = '50k';
-        break;
-      default:
-        return Container();
-    }
+  // LineChartBarData sinLine(List<FlSpot> points) {
+  //   return LineChartBarData(
+  //     spots: points,
+  //     dotData: const FlDotData(
+  //       show: false,
+  //     ),
+  //     gradient: LinearGradient(
+  //       colors: [widget.sinColor.withValues(alpha: 0), widget.sinColor],
+  //       stops: const [0.1, 1.0],
+  //     ),
+  //     barWidth: 4,
+  //     isCurved: false,
+  //   );
+  // }
 
-    return Text(text, style: style, textAlign: TextAlign.left);
-  }
+  // LineChartBarData cosLine(List<FlSpot> points) {
+  //   return LineChartBarData(
+  //     spots: points,
+  //     dotData: const FlDotData(
+  //       show: false,
+  //     ),
+  //     gradient: LinearGradient(
+  //       colors: [widget.cosColor.withValues(alpha: 0), widget.cosColor],
+  //       stops: const [0.1, 1.0],
+  //     ),
+  //     barWidth: 4,
+  //     isCurved: false,
+  //   );
+  // }
 
-  LineChartData mainData() {
-    return LineChartData(
-      gridData: FlGridData(
-        show: true,
-        drawVerticalLine: true,
-        horizontalInterval: 1,
-        verticalInterval: 1,
-        getDrawingHorizontalLine: (value) {
-          return const FlLine(
-            color: SMColors.mainGridLineColor,
-            strokeWidth: 1,
-          );
-        },
-        getDrawingVerticalLine: (value) {
-          return const FlLine(
-            color: SMColors.mainGridLineColor,
-            strokeWidth: 1,
-          );
-        },
-      ),
-      titlesData: FlTitlesData(
-        show: true,
-        rightTitles: const AxisTitles(
-          sideTitles: SideTitles(showTitles: false),
-        ),
-        topTitles: const AxisTitles(
-          sideTitles: SideTitles(showTitles: false),
-        ),
-        bottomTitles: AxisTitles(
-          sideTitles: SideTitles(
-            showTitles: true,
-            reservedSize: 30,
-            interval: 1,
-            getTitlesWidget: bottomTitleWidgets,
-          ),
-        ),
-        leftTitles: AxisTitles(
-          sideTitles: SideTitles(
-            showTitles: true,
-            interval: 1,
-            getTitlesWidget: leftTitleWidgets,
-            reservedSize: 42,
-          ),
-        ),
-      ),
-      borderData: FlBorderData(
-        show: true,
-        border: Border.all(color: const Color(0xff37434d)),
-      ),
-      minX: 0,
-      maxX: 11,
-      minY: 0,
-      maxY: 6,
-      lineBarsData: [
-        LineChartBarData(
-          spots: const [
-            FlSpot(0, 3),
-            FlSpot(2.6, 2),
-            FlSpot(4.9, 5),
-            FlSpot(6.8, 3.1),
-            FlSpot(8, 4),
-            FlSpot(9.5, 3),
-            FlSpot(11, 4),
-          ],
-          isCurved: true,
-          gradient: LinearGradient(
-            colors: gradientColors,
-          ),
-          barWidth: 5,
-          isStrokeCapRound: true,
-          dotData: const FlDotData(
-            show: false,
-          ),
-          belowBarData: BarAreaData(
-            show: true,
-            gradient: LinearGradient(
-              colors: gradientColors
-                  .map((color) => color.withOpacity(0.3))
-                  .toList(),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  LineChartData avgData() {
-    return LineChartData(
-      lineTouchData: const LineTouchData(enabled: false),
-      gridData: FlGridData(
-        show: true,
-        drawHorizontalLine: true,
-        verticalInterval: 1,
-        horizontalInterval: 1,
-        getDrawingVerticalLine: (value) {
-          return const FlLine(
-            color: Color(0xff37434d),
-            strokeWidth: 1,
-          );
-        },
-        getDrawingHorizontalLine: (value) {
-          return const FlLine(
-            color: Color(0xff37434d),
-            strokeWidth: 1,
-          );
-        },
-      ),
-      titlesData: FlTitlesData(
-        show: true,
-        bottomTitles: AxisTitles(
-          sideTitles: SideTitles(
-            showTitles: true,
-            reservedSize: 30,
-            getTitlesWidget: bottomTitleWidgets,
-            interval: 1,
-          ),
-        ),
-        leftTitles: AxisTitles(
-          sideTitles: SideTitles(
-            showTitles: true,
-            getTitlesWidget: leftTitleWidgets,
-            reservedSize: 42,
-            interval: 1,
-          ),
-        ),
-        topTitles: const AxisTitles(
-          sideTitles: SideTitles(showTitles: false),
-        ),
-        rightTitles: const AxisTitles(
-          sideTitles: SideTitles(showTitles: false),
-        ),
-      ),
-      borderData: FlBorderData(
-        show: true,
-        border: Border.all(color: const Color(0xff37434d)),
-      ),
-      minX: 0,
-      maxX: 11,
-      minY: 0,
-      maxY: 6,
-      lineBarsData: [
-        LineChartBarData(
-          spots: const [
-            FlSpot(0, 3.44),
-            FlSpot(2.6, 3.44),
-            FlSpot(4.9, 3.44),
-            FlSpot(6.8, 3.44),
-            FlSpot(8, 3.44),
-            FlSpot(9.5, 3.44),
-            FlSpot(11, 3.44),
-          ],
-          isCurved: true,
-          gradient: LinearGradient(
-            colors: [
-              ColorTween(begin: gradientColors[0], end: gradientColors[1])
-                  .lerp(0.2)!,
-              ColorTween(begin: gradientColors[0], end: gradientColors[1])
-                  .lerp(0.2)!,
-            ],
-          ),
-          barWidth: 5,
-          isStrokeCapRound: true,
-          dotData: const FlDotData(
-            show: false,
-          ),
-          belowBarData: BarAreaData(
-            show: true,
-            gradient: LinearGradient(
-              colors: [
-                ColorTween(begin: gradientColors[0], end: gradientColors[1])
-                    .lerp(0.2)!
-                    .withOpacity(0.1),
-                ColorTween(begin: gradientColors[0], end: gradientColors[1])
-                    .lerp(0.2)!
-                    .withOpacity(0.1),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
+  @override
+  void dispose() {
+    socket.dispose();
+    super.dispose();
   }
 }

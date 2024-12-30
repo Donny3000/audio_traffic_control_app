@@ -31,7 +31,7 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Initialize logger
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger('App')
+logger = logging.getLogger('AudioServer')
 
 # Setup the microphone audio streaming
 mic_streamer = MicrophoneStreamer(socketio, './config.ini')

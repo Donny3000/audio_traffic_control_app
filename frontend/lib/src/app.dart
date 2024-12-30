@@ -2,19 +2,21 @@ import 'dart:async';
 //import 'dart:collection';
 //import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:math';
 import 'dart:io' as io;                               // To detect platform
 import 'package:flutter/foundation.dart' show kIsWeb; // To detect web platform
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'package:socket_io_client/socket_io_client.dart' as io;
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 //import 'package:audioplayers/audioplayers.dart';
 //import 'package:audioplayers/audio_cache.dart';
 
 //import 'sample_feature/sample_item_details_view.dart';
 //import 'sample_feature/sample_item_list_view.dart';
+import 'widgets/audio_spectrum.dart';
 import 'settings/settings_controller.dart';
 import 'resources/texts.dart';
 //import 'settings/settings_view.dart';
@@ -88,97 +90,53 @@ class AudioStreamPage extends StatefulWidget {
 }
 
 class _AudioStreamPageState extends State<AudioStreamPage> {
-  late io.Socket socket;
+  static const TextStyle optionStyle =
+      TextStyle(fontSize: 30, fontWeight: FontWeight.bold);
+  static const List<Widget> _navOptions = <Widget>[
+    AudioSpectrum(),
+    Text(
+      'Index 1: Settings',
+      style: optionStyle,
+    )
+  ];
+
+  //late io.Socket socket;
   //late AudioPlayer audioPlayer;
   //late Queue<Uint16List> audioBuffer;
-  Timer? playbackTimer;
-  List<double> amplitudes = [];
-  final int maxAmplitudes = 100;
+  //Timer? playbackTimer;
+  //List<double> amplitudes = [];
+  //final int maxAmplitudes = 100;
   final Logger logger     = Logger(
     printer: PrettyPrinter(methodCount: 0),
   );
 
   // Configurable parameters
-  int sampleRate = 44100; // Default sample rate
-  int bufferSize = 1024; // Default buffer size
-  final List<int> sampleRates = [8000, 16000, 32000, 44100, 48000];
+  //int sampleRate = 44100; // Default sample rate
+  //int bufferSize = 1024; // Default buffer size
+  //final List<int> sampleRates = [8000, 16000, 32000, 44100, 48000];
 
-  @override
-  void initState() {
-    super.initState();
-    //audioPlayer = AudioPlayer();
-    //audioBuffer = Queue<Uint16List>();
-    _connectToSocket();
+  // Navigation variable
+  int _selectedIndex = 0;
+
+  void _onItemTapped(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
   }
 
-  @override
-  void dispose() {
-    socket.dispose();
-    playbackTimer?.cancel();
-    //audioPlayer.dispose();
-    super.dispose();
-  }
+  // @override
+  // void initState() {
+  //   super.initState();
+  //   //audioPlayer = AudioPlayer();
+  //   //audioBuffer = Queue<Uint16List>();
+  // }
 
-  void _connectToSocket() {
-    // Determine WebSocket URL based on platform
-    final String serverUrl = _getServerUrl();
-
-    // Connect to the Flask-SocketIO server
-    socket = io.io(
-      serverUrl,
-      io.OptionBuilder()
-          .setTransports(['websocket']) // Use WebSocket transport
-          .disableAutoConnect() // Prevent auto-connection
-          .build(),
-    );
-
-    // Set up socket listeners
-    socket.onConnect((_) {
-      logger.i('Connected to server');
-    });
-
-    socket.on('audio_stream', (data) {
-      // Handle incoming audio data
-      _updateWaveform(
-        Int16List.fromList(
-          List<int>.from(data['samples'])
-        )
-      );
-      // if (data is Uint16List) {
-      //   _addToBuffer(data);
-      //   _updateWaveform(data);
-      // }
-    });
-
-    socket.on('audio_error', (data) {
-      logger.e('Audio error: $data');
-    });
-
-    socket.onDisconnect((_) {
-      logger.i('Disconnected from server');
-    });
-
-    socket.connect();
-  }
-
-  String _getServerUrl() {
-    const String baseUrl = 'ws://black-mamba.lan:5001';
-
-    if (kIsWeb) {
-      // Web-specific URL (no change needed)
-      return baseUrl;
-    } else if (io.Platform.isAndroid || io.Platform.isIOS) {
-      // Mobile platforms: Ensure the IP address is reachable from the device
-      return baseUrl;
-    } else if (io.Platform.isWindows ||
-        io.Platform.isLinux ||
-        io.Platform.isMacOS) {
-      // Desktop platforms: Adjust settings if needed
-      return baseUrl;
-    } else {
-      throw UnsupportedError('Unsupported platform');
-    }
-  }
+  // @override
+  // void dispose() {
+  //   //playbackTimer?.cancel();
+  //   //audioPlayer.dispose();
+  //   super.dispose();
+  // }
 
   // void _addToBuffer(Uint16List data) {
   //   // Add audio chunk to the buffer
@@ -200,147 +158,231 @@ class _AudioStreamPageState extends State<AudioStreamPage> {
   //   });
   // }
 
-  void _updateWaveform(Int16List data) {
-    // Extract amplitude from raw audio data for waveform visualization
-    final int16List = Int16List.view(data.buffer); // Assuming 16-bit PCM format
-    final double maxAmplitude =
-        int16List.map((v) => v.abs()).reduce(max).toDouble();
+  // void _updateWaveform(Int16List data) {
+  //   // Extract amplitude from raw audio data for waveform visualization
+  //   final int16List = Int16List.view(data.buffer); // Assuming 16-bit PCM format
+  //   final double maxAmplitude =
+  //       int16List.map((v) => v.abs()).reduce(max).toDouble();
 
-    setState(() {
-      amplitudes.add(maxAmplitude);
-      if (amplitudes.length > maxAmplitudes) {
-        amplitudes.removeAt(0); // Keep the amplitude list size manageable
-      }
-    });
-  }
+  //   setState(() {
+  //     amplitudes.add(maxAmplitude);
+  //     if (amplitudes.length > maxAmplitudes) {
+  //       amplitudes.removeAt(0); // Keep the amplitude list size manageable
+  //     }
+  //   });
+  // }
 
-  void _startAudioStream() {
-    // Send user-selected parameters to the server
-    socket.emit('start_audio', {
-      'sample_rate': sampleRate,
-      'buffer_size': bufferSize
-    });
-  }
+  // void _startAudioStream() {
+  //   // Send user-selected parameters to the server
+  //   socket.emit('start_audio', {
+  //     'sample_rate': sampleRate,
+  //     'buffer_size': bufferSize
+  //   });
+  // }
 
-  void _stopAudioStream() {
-    socket.emit('stop_audio');
-  }
+  // void _stopAudioStream() {
+  //   socket.emit('stop_audio');
+  // }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text(SMTexts.appName),
+        leading: Builder(
+          builder: (context) {
+            return IconButton(
+              icon: const Icon(Icons.menu),
+              onPressed: () {
+                Scaffold.of(context).openDrawer();
+              },
+            );
+          },
+        ),
       ),
-      body: Column(
-        children: [
+      body: Center(
+        child: _navOptions[_selectedIndex],
+        // children: [
           // Waveform visualization
-          Expanded(
-            child: Center(
-              child: CustomPaint(
-                size: const Size(double.infinity, 200),
-                painter: WaveformPainter(amplitudes),
-              ),
-            ),
-          ),
+          // Expanded(
+          //   child: Center(
+          //     child: CustomPaint(
+          //       size: const Size(double.infinity, 200),
+          //       painter: WaveformPainter(amplitudes),
+          //     ),
+          //   ),
+          // ),
           // Configurable parameters UI
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Column(
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Sample Rate:'),
-                    DropdownButton<int>(
-                      value: sampleRate,
-                      items: sampleRates
-                          .map((rate) => DropdownMenuItem(
-                                value: rate,
-                                child: Text('$rate Hz'),
-                              ))
-                          .toList(),
-                      onChanged: (value) {
-                        if (value != null) {
-                          setState(() {
-                            sampleRate = value;
-                          });
-                        }
-                      },
-                    ),
-                  ],
-                ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Buffer Size:'),
-                    Slider(
-                      value: bufferSize.toDouble(),
-                      min: 256,
-                      max: 2048,
-                      divisions: 7,
-                      label: '$bufferSize',
-                      onChanged: (value) {
-                        setState(() {
-                          bufferSize = value.toInt();
-                        });
-                      },
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+          // Padding(
+          //   padding: const EdgeInsets.all(8.0),
+          //   child: Column(
+          //     children: [
+          //       Row(
+          //         mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          //         children: [
+          //           const Text('Sample Rate:'),
+          //           DropdownButton<int>(
+          //             value: sampleRate,
+          //             items: sampleRates
+          //                 .map((rate) => DropdownMenuItem(
+          //                       value: rate,
+          //                       child: Text('$rate Hz'),
+          //                     ))
+          //                 .toList(),
+          //             onChanged: (value) {
+          //               if (value != null) {
+          //                 setState(() {
+          //                   sampleRate = value;
+          //                 });
+          //               }
+          //             },
+          //           ),
+          //         ],
+          //       ),
+          //       Row(
+          //         mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          //         children: [
+          //           const Text('Buffer Size:'),
+          //           Slider(
+          //             value: bufferSize.toDouble(),
+          //             min: 256,
+          //             max: 2048,
+          //             divisions: 7,
+          //             label: '$bufferSize',
+          //             onChanged: (value) {
+          //               setState(() {
+          //                 bufferSize = value.toInt();
+          //               });
+          //             },
+          //           ),
+          //         ],
+          //       ),
+          //     ],
+          //   ),
+          // ),
           // Start/Stop buttons
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          // Row(
+          //   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          //   children: [
+          //     ElevatedButton(
+          //       onPressed: _startAudioStream,
+          //       child: const Text('Start Audio Stream'),
+          //     ),
+          //     ElevatedButton(
+          //       onPressed: _stopAudioStream,
+          //       child: const Text('Stop Audio Stream'),
+          //     ),
+          //   ],
+          // ),
+        // ],
+      ),
+      drawer: SizedBox(
+        width: MediaQuery.of(context).size.width * 0.25,
+        child: Drawer(
+          // Add a ListView to the drawer. This ensures the user can scroll
+          // through the options in the drawer if there isn't enough vertical
+          // space to fit everything.
+          child: ListView(
+            // NOTE: Remove any padding from the ListView
+            padding: EdgeInsets.zero,
             children: [
-              ElevatedButton(
-                onPressed: _startAudioStream,
-                child: const Text('Start Audio Stream'),
+              const UserAccountsDrawerHeader(
+                decoration: BoxDecoration(
+                  color: Colors.blue
+                ),
+                accountName: Text(
+                  "Donald R. Poole, Jr.",
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                accountEmail: Text(
+                  "donny3000@gmail.com",
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold
+                  )
+                ),
+                currentAccountPicture: FlutterLogo(),
               ),
-              ElevatedButton(
-                onPressed: _stopAudioStream,
-                child: const Text('Stop Audio Stream'),
+              ListTile(
+                leading: Icon(
+                  FontAwesomeIcons.waveSquare
+                ),
+                title: const Text("Analyzer"),
+                selected: _selectedIndex == 0,
+                onTap: () {
+                  // Update the state of the app
+                  _onItemTapped(0);
+                  // Then close the drawer
+                  Navigator.pop(context);
+                },
               ),
+              ListTile(
+                leading: Icon(
+                  FontAwesomeIcons.wrench
+                ),
+                title: const Text("Settings"),
+                selected: _selectedIndex == 1,
+                onTap: () {
+                  // Update the state of the app
+                  _onItemTapped(1);
+                  // Then close the drawer
+                  Navigator.pop(context);
+                },
+              ),
+              AboutListTile(
+                  icon: Icon(
+                    Icons.info,
+                  ),
+                  applicationIcon: Icon(
+                    Icons.local_play,
+                  ),
+                  applicationName: SMTexts.appName,
+                  applicationVersion: SMTexts.appVersion,
+                  applicationLegalese: SMTexts.appLegalese,
+                  aboutBoxChildren: [
+                    ///Content goes here...
+                  ],
+                  child: const Text(SMTexts.aboutTitle)
+                ),
             ],
           ),
-        ],
-      ),
+        ),
+      )
     );
   }
 }
 
-class WaveformPainter extends CustomPainter {
-  final List<double> amplitudes;
+// class WaveformPainter extends CustomPainter {
+//   final List<double> amplitudes;
 
-  WaveformPainter(this.amplitudes);
+//   WaveformPainter(this.amplitudes);
 
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.blue
-      ..strokeWidth = 2.0
-      ..style = PaintingStyle.stroke;
+//   @override
+//   void paint(Canvas canvas, Size size) {
+//     final paint = Paint()
+//       ..color = Colors.blue
+//       ..strokeWidth = 2.0
+//       ..style = PaintingStyle.stroke;
 
-    final path = Path();
-    if (amplitudes.isNotEmpty) {
-      final double step = size.width / amplitudes.length;
+//     final path = Path();
+//     if (amplitudes.isNotEmpty) {
+//       final double step = size.width / amplitudes.length;
 
-      for (int i = 0; i < amplitudes.length; i++) {
-        final x = i * step;
-        final y = size.height / 2 - amplitudes[i] / 32768 * (size.height / 2);
-        if (i == 0) {
-          path.moveTo(x, y);
-        } else {
-          path.lineTo(x, y);
-        }
-      }
-    }
+//       for (int i = 0; i < amplitudes.length; i++) {
+//         final x = i * step;
+//         final y = size.height / 2 - amplitudes[i] / 32768 * (size.height / 2);
+//         if (i == 0) {
+//           path.moveTo(x, y);
+//         } else {
+//           path.lineTo(x, y);
+//         }
+//       }
+//     }
 
-    canvas.drawPath(path, paint);
-  }
+//     canvas.drawPath(path, paint);
+//   }
 
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
-}
+//   @override
+//   bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+//}
