@@ -13,7 +13,7 @@ streaming = False
 config    = ConfigParser()
 with open('./config.ini') as f:
     config.read_file(f)
-app       = Flask(__name__, instance_relative_config=True)
+app       = Flask("AudioStreamer", instance_relative_config=True)
 app.config.from_mapping(
     SECRET_KEY='dev',
     DATABASE=os.path.sep.join([app.instance_path, 'backend_app.sqlite']),

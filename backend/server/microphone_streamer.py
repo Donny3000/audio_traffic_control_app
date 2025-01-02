@@ -56,7 +56,7 @@ class MicrophoneStreamer(object):
             win_size               = samples.shape[-1]
             real_win_size          = int(win_size / 2)
             sp                     = np.absolute(np.fft.fft(samples)[1:real_win_size])
-            self._avg_buffer.appendleft(20 * np.log10(2 * np.abs(sp) / real_win_size))
+            self._avg_buffer.appendleft(20 * np.log10(2 * np.abs(sp) / (real_win_size + 1e-9)))
             mags                   = np.mean(self._avg_buffer, axis=0)
             freqs                  = self.sample_rate * np.fft.fftfreq(win_size)[1:real_win_size]
 
